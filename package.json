@@ -1,0 +1,34 @@
+{
+  "name": "mavlink.ts",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gribbet/mavlink.ts.git"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mavlink-generate": "./dist/generate.js"
+  },
+  "files": [
+    "README.md",
+    "/dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.3.3"
+  },
+  "devDependencies": {
+    "@gribbet/eslint-config": "github:gribbet/eslint-config",
+    "@types/node": "^25.0.2",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}
