@@ -9,6 +9,7 @@ export type MavlinkPacket<T> = {
   systemId: number;
   componentId: number;
   message: T;
+  bytes: number;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +37,7 @@ export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
       sequence,
       systemId,
       componentId,
+      bytes,
     }) => {
       const { decode, crcExtra = 0 } = messageMap.get(messageId) ?? {};
       if (!decode) return;
@@ -49,6 +51,7 @@ export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
         systemId,
         componentId,
         message,
+        bytes,
       });
     },
   );
@@ -82,6 +85,7 @@ export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
     });
     if (sequence > 255) sequence = 0;
     channel.send(data);
+    return data.length;
   };
 
   const closeChannel = channel.receive(data => parser.parse(data));
