@@ -13,6 +13,7 @@ export type RawPacket = {
   signature?: Uint8Array;
   checksum: number;
   calculatedCrc: number;
+  bytes: number;
 };
 
 type State =
@@ -141,6 +142,10 @@ export const createMavlinkParser = () => {
           compatibleFlags,
           checksum: receivedChecksum,
           calculatedCrc: crc.value(),
+          bytes:
+            (magic === 0xfd ? 12 : 8) +
+            length +
+            (magic === 0xfd && incompatibleFlags & 0x01 ? 13 : 0),
         });
         if (magic === 0xfd && incompatibleFlags & 0x01) state = "SIGNATURE";
         else reset();
