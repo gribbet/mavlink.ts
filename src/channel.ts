@@ -1,8 +1,14 @@
 import { createCrc } from "./crc";
 import { encodePacket } from "./encoder";
 import { createMavlinkParser } from "./parser";
+import type { Schema } from "./schema";
 import { createSubscriber } from "./subscriber";
-import type { Channel, MessageSchema } from "./types";
+
+export type Channel = {
+  receive: (handler: (data: Uint8Array) => void) => () => void;
+  send: (data: Uint8Array) => void;
+  close: () => void;
+};
 
 export type MavlinkPacket<T> = {
   sequence: number;
@@ -12,20 +18,16 @@ export type MavlinkPacket<T> = {
   bytes: number;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
+export const createMavlinkChannel = <Message extends { type: string }>(
   channel: Channel,
-  schema: S,
+  schema: Schema<Message>,
 ) => {
-  type ExtractMessage<S> = S extends MessageSchema<infer U> ? U : never;
-  type Message = ExtractMessage<S[number]>;
-
   const { subscribe: receive, emit } =
     createSubscriber<MavlinkPacket<Message>>();
   let sequence = 0;
 
-  const messageMap = new Map(schema.map(_ => [_.id, _]));
-  const typeToIdMap = new Map(schema.map(_ => [_.name, _.id]));
+  const types = Object.keys(schema) as Message["type"][];
+  const messageMap = new Map(types.map(_ => [schema[_].id, schema[_]]));
 
   const parser = createMavlinkParser();
   const closeParser = parser.onPacket(
@@ -45,7 +47,7 @@ export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
       crc.accumulate(crcExtra);
       if (crc.value() !== checksum) return;
 
-      const message = decode(payload) as Message;
+      const message = decode(payload);
       emit({
         sequence,
         systemId,
@@ -65,13 +67,10 @@ export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
     componentId: number;
     message: Message;
   }) => {
-    const { type } = message;
-    const messageId =
-      typeof type === "string" ? typeToIdMap.get(type) : undefined;
-    if (messageId === undefined)
-      throw new Error(`Unknown message type: ${type}`);
-    const { encode, crcExtra = 0 } = messageMap.get(messageId) ?? {};
-    if (!encode) throw new Error(`No schema for message ID: ${messageId}`);
+    const type = message.type as Message["type"];
+    if (typeof type !== "string" || !(type in schema))
+      throw new Error(`Message type missing in schema: ${type}`);
+    const { encode, id: messageId = 0, crcExtra = 0 } = schema[type];
 
     const payload = encode(message);
     const data = encodePacket({
@@ -101,6 +100,6 @@ export const createMavlinkChannel = <S extends readonly MessageSchema<any>[]>(
   };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type MavlinkChannel<S extends readonly MessageSchema<any>[]> =
-  ReturnType<typeof createMavlinkChannel<S>>;
+export type MavlinkChannel<Message extends { type: string }> = ReturnType<
+  typeof createMavlinkChannel<Message>
+>;

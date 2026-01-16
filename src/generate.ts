@@ -257,7 +257,7 @@ export const generateMavlinkApi = async (urls: string[]): Promise<string> => {
   }
 
   let output =
-    '/* eslint-disable */\n\nimport { type MessageSchema, createReader, createWriter } from "mavlink.ts";\n\nconst textDecoder = new TextDecoder();\nconst textEncoder = new TextEncoder();\n\n';
+    '/* eslint-disable */\n\nimport { type Schema, createReader, createWriter } from "mavlink.ts";\n\nconst textDecoder = new TextDecoder();\nconst textEncoder = new TextEncoder();\n\n';
 
   output += `const toMap = <K extends string, V extends number | bigint | string>(obj: Record<K, V>) => new Map<K, V>(Object.entries(obj) as [K, V][]);
 
@@ -339,12 +339,12 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
 
   output += `export type Message = ${messageTypes.join(" | ") || "never"};\n\n`;
 
-  output += "export const schema = [\n";
+  output += "export const schema: Schema<Message> = {\n";
   for (const messageDef of messages) {
     const pascalName = toPascalCase(messageDef.name);
     const sortedFields = getSortedFields(messageDef);
 
-    output += `  {\n    id: ${messageDef.id},\n    name: "${messageDef.name}",\n    crcExtra: ${calculateCrcExtra(messageDef)},\n`;
+    output += `  ${safeKey(messageDef.name)}: {\n    id: ${messageDef.id},\n    name: "${messageDef.name}",\n    crcExtra: ${calculateCrcExtra(messageDef)},\n`;
     output += `    decode(payload: Uint8Array): ${pascalName} {\n      const reader = createReader(payload);\n`;
 
     for (const field of sortedFields) {
@@ -459,7 +459,7 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
     }
     output += "      return writer.finish();\n    },\n  },\n";
   }
-  output += "] as const;\n";
+  output += "};\n";
 
   return output;
 };
