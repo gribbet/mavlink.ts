@@ -1,11 +1,11 @@
-export type MessageSchema<Nessage extends { type: string }> = {
-  id: number;
-  name: Nessage["type"];
-  crcExtra: number;
-  decode: (payload: Uint8Array) => Nessage;
-  encode: (_: Nessage) => Uint8Array;
+export type MessageSchema<Message> = {
+  readonly id: number;
+  readonly crcExtra: number;
+  readonly decode: (payload: Uint8Array) => Message;
+  readonly encode: (data: Message) => Uint8Array;
 };
 
-export type Schema<Message extends { type: string }> = {
-  [Type in Message["type"]]: MessageSchema<Message & { type: Type }>;
+export type Schema = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly [type: string]: MessageSchema<any>;
 };

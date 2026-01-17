@@ -1,7 +1,7 @@
 import { createCrc } from "./crc";
 import { encodePacket } from "./encoder";
 import { createMavlinkParser } from "./parser";
-import type { Schema } from "./schema";
+import type { MessageSchema, Schema } from "./schema";
 import { createSubscriber } from "./subscriber";
 
 export type Channel = {
@@ -9,25 +9,34 @@ export type Channel = {
   send: (data: Uint8Array) => void;
   close: () => void;
 };
+export type MessageType<S extends Schema, T extends keyof S> =
+  S[T] extends MessageSchema<infer M> ? M : never;
 
-export type MavlinkPacket<T> = {
-  sequence: number;
-  systemId: number;
-  componentId: number;
-  message: T;
-  bytes: number;
-};
+export type Packet<
+  S extends Schema,
+  T extends keyof S & string = keyof S & string,
+> = {
+  [K in T]: {
+    sequence: number;
+    systemId: number;
+    componentId: number;
+    type: K;
+    message: MessageType<S, K>;
+    bytes: number;
+  };
+}[T];
 
-export const createMavlinkChannel = <Message extends { type: string }>(
+export const createMavlinkChannel = <S extends Schema>(
   channel: Channel,
-  schema: Schema<Message>,
+  schema: S,
 ) => {
-  const { subscribe: receive, emit } =
-    createSubscriber<MavlinkPacket<Message>>();
+  type Type = keyof S & string;
+
+  const { subscribe: receive, emit } = createSubscriber<Packet<S>>();
   let sequence = 0;
 
-  const types = Object.keys(schema) as Message["type"][];
-  const messageMap = new Map(types.map(_ => [schema[_].id, schema[_]]));
+  const types = Object.keys(schema) as Type[];
+  const messages = new Map(types.map(_ => [schema[_]?.id ?? 0, _]));
 
   const parser = createMavlinkParser();
   const closeParser = parser.onPacket(
@@ -41,8 +50,11 @@ export const createMavlinkChannel = <Message extends { type: string }>(
       componentId,
       bytes,
     }) => {
-      const { decode, crcExtra = 0 } = messageMap.get(messageId) ?? {};
-      if (!decode) return;
+      const type = messages.get(messageId);
+      if (!type) return;
+      const { crcExtra, decode } = schema[type] as MessageSchema<
+        MessageType<S, Type>
+      >;
       const crc = createCrc(calculatedCrc);
       crc.accumulate(crcExtra);
       if (crc.value() !== checksum) return;
@@ -52,25 +64,29 @@ export const createMavlinkChannel = <Message extends { type: string }>(
         sequence,
         systemId,
         componentId,
+        type,
         message,
         bytes,
       });
     },
   );
 
-  const send = ({
+  const send = <T extends Type>({
     systemId,
     componentId,
+    type,
     message,
   }: {
     systemId: number;
     componentId: number;
-    message: Message;
+    type: T;
+    message: MessageType<S, T>;
   }) => {
-    const type = message.type as Message["type"];
-    if (typeof type !== "string" || !(type in schema))
-      throw new Error(`Message type missing in schema: ${type}`);
-    const { encode, id: messageId = 0, crcExtra = 0 } = schema[type];
+    const {
+      encode,
+      id: messageId = 0,
+      crcExtra = 0,
+    } = schema[type] as MessageSchema<MessageType<S, T>>;
 
     const payload = encode(message);
     const data = encodePacket({
@@ -100,6 +116,6 @@ export const createMavlinkChannel = <Message extends { type: string }>(
   };
 };
 
-export type MavlinkChannel<Message extends { type: string }> = ReturnType<
-  typeof createMavlinkChannel<Message>
+export type MavlinkChannel<S extends Schema> = ReturnType<
+  typeof createMavlinkChannel<S>
 >;

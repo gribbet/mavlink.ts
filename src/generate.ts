@@ -57,7 +57,6 @@ const toPascalCase = (text: string) => {
 
 const ReservedWords = new Set([
   "arguments",
-  "type",
   "default",
   "function",
   "class",
@@ -257,7 +256,7 @@ export const generateMavlinkApi = async (urls: string[]): Promise<string> => {
   }
 
   let output =
-    '/* eslint-disable */\n\nimport { type Schema, createReader, createWriter } from "mavlink.ts";\n\nconst textDecoder = new TextDecoder();\nconst textEncoder = new TextEncoder();\n\n';
+    '/* eslint-disable */\n\nimport { createReader, createWriter } from "mavlink.ts";\n\nconst textDecoder = new TextDecoder();\nconst textEncoder = new TextEncoder();\n\n';
 
   output += `const toMap = <K extends string, V extends number | bigint | string>(obj: Record<K, V>) => new Map<K, V>(Object.entries(obj) as [K, V][]);
 
@@ -312,11 +311,9 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
     output += `export const ${camelName}InverseMap = invertMap(${camelName}Map);\n\n`;
   }
 
-  const messageTypes: string[] = [];
   for (const messageDef of messages) {
     const pascalName = toPascalCase(messageDef.name);
-    messageTypes.push(pascalName);
-    output += `export type ${pascalName} = {\n  type: "${messageDef.name}";\n`;
+    output += `export type ${pascalName} = {\n`;
     const fields = (
       Array.isArray(messageDef.field) ? messageDef.field : [messageDef.field]
     ).filter(Boolean);
@@ -337,14 +334,12 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
     output += "};\n\n";
   }
 
-  output += `export type Message = ${messageTypes.join(" | ") || "never"};\n\n`;
-
-  output += "export const schema: Schema<Message> = {\n";
+  output += "export const schema = {\n";
   for (const messageDef of messages) {
     const pascalName = toPascalCase(messageDef.name);
     const sortedFields = getSortedFields(messageDef);
 
-    output += `  ${safeKey(messageDef.name)}: {\n    id: ${messageDef.id},\n    name: "${messageDef.name}",\n    crcExtra: ${calculateCrcExtra(messageDef)},\n`;
+    output += `  ${safeKey(messageDef.name)}: {\n    id: ${messageDef.id},\n    crcExtra: ${calculateCrcExtra(messageDef)},\n`;
     output += `    decode(payload: Uint8Array): ${pascalName} {\n      const reader = createReader(payload);\n`;
 
     for (const field of sortedFields) {
@@ -382,7 +377,7 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
         output += `      const ${fieldName} = reader.getUint8Array(${length * size});\n`;
       }
     }
-    output += `      return {\n        type: "${messageDef.name}",\n`;
+    output += "      return {\n";
     const originalFields = (
       Array.isArray(messageDef.field) ? messageDef.field : [messageDef.field]
     ).filter(Boolean);
@@ -459,7 +454,8 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
     }
     output += "      return writer.finish();\n    },\n  },\n";
   }
-  output += "};\n";
+  output +=
+    "} as const;\n\nexport type Schema = typeof schema;\nexport type Type = keyof Schema;\n";
 
   return output;
 };
