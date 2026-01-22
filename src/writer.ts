@@ -1,6 +1,6 @@
 export const createWriter = (size: number) => {
-  const buffer = new ArrayBuffer(size);
-  const view = new DataView(buffer);
+  const payload = new Uint8Array(size);
+  const view = new DataView(payload.buffer);
   let offset = 0;
 
   return {
@@ -45,9 +45,9 @@ export const createWriter = (size: number) => {
       offset += 8;
     },
     setUint8Array: (data: Uint8Array, length: number) => {
-      new Uint8Array(buffer, offset, length).set(data.slice(0, length));
+      payload.set(data.slice(0, length), offset);
       offset += length;
     },
-    finish: () => new Uint8Array(buffer),
+    finish: () => new Uint8Array(payload),
   };
 };

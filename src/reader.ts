@@ -1,65 +1,34 @@
-export const createReader = ({
-  buffer,
-  byteOffset,
-  byteLength,
-}: Uint8Array) => {
+export const createReader = (payload: Uint8Array, length?: number) => {
+  if (length !== undefined && payload.length < length) {
+    const padded = new Uint8Array(length);
+    padded.set(payload);
+    payload = padded;
+  }
+  const { buffer, byteOffset, byteLength } = payload;
   const view = new DataView(buffer, byteOffset, byteLength);
   let offset = 0;
 
   const increment = (bytes: number) => {
     const result = offset;
     offset += bytes;
-    return result + bytes <= byteLength ? result : undefined;
+    return result;
   };
 
   return {
-    getUint8: () => {
-      const offset = increment(1);
-      return offset !== undefined ? view.getUint8(offset) : 0;
-    },
-    getInt8: () => {
-      const offset = increment(1);
-      return offset !== undefined ? view.getInt8(offset) : 0;
-    },
-    getUint16: () => {
-      const offset = increment(2);
-      return offset !== undefined ? view.getUint16(offset, true) : 0;
-    },
-    getInt16: () => {
-      const offset = increment(2);
-      return offset !== undefined ? view.getInt16(offset, true) : 0;
-    },
-    getUint32: () => {
-      const offset = increment(4);
-      return offset !== undefined ? view.getUint32(offset, true) : 0;
-    },
-    getInt32: () => {
-      const offset = increment(4);
-      return offset !== undefined ? view.getInt32(offset, true) : 0;
-    },
-    getBigUint64: () => {
-      const offset = increment(8);
-      return offset !== undefined ? view.getBigUint64(offset, true) : 0n;
-    },
-    getBigInt64: () => {
-      const offset = increment(8);
-      return offset !== undefined ? view.getBigInt64(offset, true) : 0n;
-    },
-    getFloat32: () => {
-      const offset = increment(4);
-      return offset !== undefined ? view.getFloat32(offset, true) : 0;
-    },
-    getFloat64: () => {
-      const offset = increment(8);
-      return offset !== undefined ? view.getFloat64(offset, true) : 0;
-    },
+    getUint8: () => view.getUint8(increment(1)),
+    getInt8: () => view.getInt8(increment(1)),
+    getUint16: () => view.getUint16(increment(2), true),
+    getInt16: () => view.getInt16(increment(2), true),
+    getUint32: () => view.getUint32(increment(4), true),
+    getInt32: () => view.getInt32(increment(4), true),
+    getBigUint64: () => view.getBigUint64(increment(8), true),
+    getBigInt64: () => view.getBigInt64(increment(8), true),
+    getFloat32: () => view.getFloat32(increment(4), true),
+    getFloat64: () => view.getFloat64(increment(8), true),
     getUint8Array: (length: number) => {
       const result = new Uint8Array(length);
-      const available = Math.max(0, byteLength - offset);
-      const count = Math.min(length, available);
-      if (count > 0)
-        result.set(new Uint8Array(view.buffer, byteOffset + offset, count));
-      offset += length;
+      result.set(new Uint8Array(buffer, byteOffset + offset, length));
+      increment(length);
       return result;
     },
   };

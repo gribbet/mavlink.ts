@@ -85,8 +85,15 @@ const mapType = (mavlinkType: string) => {
   const type = mavlinkType.trim();
   if (type.startsWith("char[")) return "string";
   if (type === "char") return "string";
-  if (type.includes("[")) return "Uint8Array";
-  if (/^(u?int(8|16|32)_t|float|double)/.test(type)) return "number";
+
+  const arrayLength = getArrayLength(type);
+  if (arrayLength > 0) {
+    const base = type.split("[")[0] ?? "";
+    if (base === "uint8_t") return "Uint8Array";
+    const baseTsType = /^u?int64_t/.test(base) ? "bigint" : "number";
+    return `readonly [${Array(arrayLength).fill(baseTsType).join(", ")}]`;
+  }
+
   if (/^u?int64_t/.test(type)) return "bigint";
   return "number";
 };
@@ -97,6 +104,29 @@ const getTypeSize = (mavlinkType: string) => {
   if (/^(u?int32_t|float)/.test(type)) return 4;
   if (/^u?int16_t/.test(type)) return 2;
   return 1;
+};
+
+const getMethods = (type: string) => {
+  if (type.startsWith("uint8_t"))
+    return { read: "getUint8", write: "setUint8" };
+  if (type.startsWith("int8_t")) return { read: "getInt8", write: "setInt8" };
+  if (type.startsWith("uint16_t"))
+    return { read: "getUint16", write: "setUint16" };
+  if (type.startsWith("int16_t"))
+    return { read: "getInt16", write: "setInt16" };
+  if (type.startsWith("uint32_t"))
+    return { read: "getUint32", write: "setUint32" };
+  if (type.startsWith("int32_t"))
+    return { read: "getInt32", write: "setInt32" };
+  if (type.startsWith("uint64_t"))
+    return { read: "getBigUint64", write: "setBigUint64" };
+  if (type.startsWith("int64_t"))
+    return { read: "getBigInt64", write: "setBigInt64" };
+  if (type.startsWith("float"))
+    return { read: "getFloat32", write: "setFloat32" };
+  if (type.startsWith("double"))
+    return { read: "getFloat64", write: "setFloat64" };
+  return { read: "getUint8", write: "setUint8" };
 };
 
 const getArrayLength = (mavlinkType: string) => {
@@ -338,61 +368,9 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
   for (const messageDef of messages) {
     const pascalName = toPascalCase(messageDef.name);
     const sortedFields = getSortedFields(messageDef);
-
-    output += `  ${safeKey(messageDef.name)}: {\n    id: ${messageDef.id},\n    crcExtra: ${calculateCrcExtra(messageDef)},\n`;
-    output += `    decode(payload: Uint8Array): ${pascalName} {\n      const reader = createReader(payload);\n`;
-
-    for (const field of sortedFields) {
-      const fieldName = toCamelCase(field.name);
-      const type = field.type.trim();
-      if (type.startsWith("uint8_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getUint8();\n`;
-      else if (type.startsWith("int8_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getInt8();\n`;
-      else if (type.startsWith("uint16_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getUint16();\n`;
-      else if (type.startsWith("int16_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getInt16();\n`;
-      else if (type.startsWith("uint32_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getUint32();\n`;
-      else if (type.startsWith("int32_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getInt32();\n`;
-      else if (type.startsWith("uint64_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getBigUint64();\n`;
-      else if (type.startsWith("int64_t") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getBigInt64();\n`;
-      else if (type.startsWith("float") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getFloat32();\n`;
-      else if (type.startsWith("double") && !type.includes("["))
-        output += `      const ${fieldName} = reader.getFloat64();\n`;
-      else if (type === "char")
-        output += `      const ${fieldName} = String.fromCharCode(reader.getUint8());\n`;
-      else if (type.startsWith("char[")) {
-        const length = getArrayLength(type);
-        output += `      const ${fieldName} = textDecoder.decode(reader.getUint8Array(${length})).replace(/\\0+$/, "");\n`;
-      } else if (type.includes("[")) {
-        const length = getArrayLength(type);
-        const base = type.split("[")[0] ?? "";
-        const size = getTypeSize(base);
-        output += `      const ${fieldName} = reader.getUint8Array(${length * size});\n`;
-      }
-    }
-    output += "      return {\n";
     const originalFields = (
       Array.isArray(messageDef.field) ? messageDef.field : [messageDef.field]
     ).filter(Boolean);
-    for (const field of originalFields) {
-      const fieldName = toCamelCase(field.name);
-      const isArray = field.type.trim().includes("[");
-      if (field.enum && !isArray)
-        if (bitmasks.has(field.enum))
-          output += `        ${fieldName}: decodeBitmask(${fieldName}, ${toCamelCase(field.enum)}InverseMap),\n`;
-        else
-          output += `        ${fieldName}: ${toCamelCase(field.enum)}InverseMap.get(${fieldName}) as ${toPascalCase(field.enum)},\n`;
-      else output += `        ${fieldName},\n`;
-    }
-    output += "      };\n    },\n";
-
     const totalSize = originalFields.reduce(
       (sum: number, field: MavlinkField) => {
         const type = field.type.trim();
@@ -405,6 +383,46 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
       },
       0,
     );
+
+    output += `  ${safeKey(messageDef.name)}: {\n    id: ${messageDef.id},\n    crcExtra: ${calculateCrcExtra(messageDef)},\n`;
+    output += `    decode(payload: Uint8Array): ${pascalName} {\n`;
+    output += `      const reader = createReader(payload, ${totalSize});\n`;
+
+    for (const field of sortedFields) {
+      const fieldName = toCamelCase(field.name);
+      const type = field.type.trim();
+      const { read: readMethod } = getMethods(type);
+      if (type === "char")
+        output += `      const ${fieldName} = String.fromCharCode(reader.getUint8());\n`;
+      else if (type.startsWith("char[")) {
+        const length = getArrayLength(type);
+        output += `      const ${fieldName} = textDecoder.decode(reader.getUint8Array(${length})).replace(/\\0+$/, "");\n`;
+      } else if (type.includes("[")) {
+        const length = getArrayLength(type);
+        const base = type.split("[")[0] ?? "";
+        if (base === "uint8_t")
+          output += `      const ${fieldName} = reader.getUint8Array(${length});\n`;
+        else {
+          const { read: arrayReadMethod } = getMethods(base);
+          output += `      const ${fieldName} = [${Array(length)
+            .fill(`reader.${arrayReadMethod}()`)
+            .join(", ")}] as const;\n`;
+        }
+      } else output += `      const ${fieldName} = reader.${readMethod}();\n`;
+    }
+    output += "      return {\n";
+    for (const field of originalFields) {
+      const fieldName = toCamelCase(field.name);
+      const isArray = field.type.trim().includes("[");
+      if (field.enum && !isArray)
+        if (bitmasks.has(field.enum))
+          output += `        ${fieldName}: decodeBitmask(${fieldName}, ${toCamelCase(field.enum)}InverseMap),\n`;
+        else
+          output += `        ${fieldName}: ${toCamelCase(field.enum)}InverseMap.get(${fieldName}) as ${toPascalCase(field.enum)},\n`;
+      else output += `        ${fieldName},\n`;
+    }
+    output += "      };\n    },\n";
+
     output += `    encode(_: ${pascalName}) {\n`;
     output += `      const writer = createWriter(${totalSize});\n`;
     for (const field of sortedFields) {
@@ -419,27 +437,8 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
             : `lookup(_.${fieldName}, ${toCamelCase(field.enum)}Map)`
           : `_.${fieldName}`;
 
-      if (type.startsWith("uint8_t") && !isArray)
-        output += `      writer.setUint8(${valueExpression});\n`;
-      else if (type.startsWith("int8_t") && !isArray)
-        output += `      writer.setInt8(${valueExpression});\n`;
-      else if (type.startsWith("uint16_t") && !isArray)
-        output += `      writer.setUint16(${valueExpression});\n`;
-      else if (type.startsWith("int16_t") && !isArray)
-        output += `      writer.setInt16(${valueExpression});\n`;
-      else if (type.startsWith("uint32_t") && !isArray)
-        output += `      writer.setUint32(${valueExpression});\n`;
-      else if (type.startsWith("int32_t") && !isArray)
-        output += `      writer.setInt32(${valueExpression});\n`;
-      else if (type.startsWith("uint64_t") && !isArray)
-        output += `      writer.setBigUint64(${valueExpression});\n`;
-      else if (type.startsWith("int64_t") && !isArray)
-        output += `      writer.setBigInt64(${valueExpression});\n`;
-      else if (type.startsWith("float") && !isArray)
-        output += `      writer.setFloat32(${valueExpression});\n`;
-      else if (type.startsWith("double") && !isArray)
-        output += `      writer.setFloat64(${valueExpression});\n`;
-      else if (type === "char")
+      const { write: writeMethod } = getMethods(type);
+      if (type === "char")
         output += `      writer.setUint8(${valueExpression}.charCodeAt(0));\n`;
       else if (type.startsWith("char[")) {
         const length = getArrayLength(type);
@@ -449,8 +448,14 @@ const lookup = <T extends string, V extends number | bigint>(value: T | V | numb
       } else if (type.includes("[")) {
         const length = getArrayLength(type);
         const camelName = toCamelCase(field.name);
-        output += `      writer.setUint8Array(_.${camelName}, ${length});\n`;
-      }
+        const base = type.split("[")[0] ?? "";
+        if (base === "uint8_t")
+          output += `      writer.setUint8Array(_.${camelName}, ${length});\n`;
+        else {
+          const { write: arrayWriteMethod } = getMethods(base);
+          output += `      _.${camelName}.forEach(writer.${arrayWriteMethod});\n`;
+        }
+      } else output += `      writer.${writeMethod}(${valueExpression});\n`;
     }
     output += "      return writer.finish();\n    },\n  },\n";
   }
