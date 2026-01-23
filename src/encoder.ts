@@ -1,4 +1,4 @@
-import { createCrc } from "./crc";
+import { createCrc } from "./crc.js";
 
 export const encodePacket = ({
   magic,

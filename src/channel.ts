@@ -1,8 +1,8 @@
-import { createCrc } from "./crc";
-import { encodePacket } from "./encoder";
-import { createMavlinkParser } from "./parser";
-import type { MessageSchema, Schema } from "./schema";
-import { createSubscriber } from "./subscriber";
+import { createCrc } from "./crc.js";
+import { encodePacket } from "./encoder.js";
+import { createMavlinkParser } from "./parser.js";
+import type { MessageSchema, Schema } from "./schema.js";
+import { createSubscriber } from "./subscriber.js";
 
 export type Channel = {
   receive: (handler: (data: Uint8Array) => void) => () => void;
