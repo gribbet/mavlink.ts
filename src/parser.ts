@@ -1,5 +1,5 @@
-import { createCrc } from "./crc";
-import { createSubscriber } from "./subscriber";
+import { createCrc } from "./crc.js";
+import { createSubscriber } from "./subscriber.js";
 
 export type RawPacket = {
   sequence: number;
